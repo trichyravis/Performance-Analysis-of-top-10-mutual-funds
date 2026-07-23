@@ -100,14 +100,15 @@ def resolve_targets(cat):
     scheme_names=names.schemeName.fillna("").str.lower()
     out={}
     for short, wishes in TARGETS.items():
-        hit=pd.DataFrame()
+        candidate_codes=[]
         for w in wishes:
             hit=names[scheme_names==w.lower()]
-            if not hit.empty: break
-        if hit.empty:
+            candidate_codes.extend(hit.schemeCode.astype(int).tolist())
+        if not candidate_codes:
             tokens=[t for t in short.lower().replace("&"," ").split() if len(t)>3 and t not in {"india","fund"}]
             hit=names[scheme_names.apply(lambda s: all(t in s for t in tokens)) & scheme_names.str.contains("direct") & scheme_names.str.contains("growth")]
-        if not hit.empty: out[short]=int(hit.iloc[0].schemeCode)
+            candidate_codes.extend(hit.schemeCode.astype(int).tolist())
+        if candidate_codes: out[short]=list(dict.fromkeys(candidate_codes))
     return out
 
 def load_all(selected):
@@ -116,7 +117,16 @@ def load_all(selected):
     series={}; errors=[]
     for name in selected:
         try:
-            s=nav_history(codes[name]);
+            candidates=[]
+            for code in codes.get(name,[]):
+                try:
+                    candidate=nav_history(code)
+                    if len(candidate)>50: candidates.append(candidate)
+                except Exception:
+                    continue
+            # Renamed schemes can have more than one matching code. Retain the
+            # code with the longest history instead of an arbitrary catalogue hit.
+            s=max(candidates,key=len) if candidates else pd.Series(dtype=float)
             if len(s)>50: series[name]=s
             else: errors.append(name)
         except Exception: errors.append(name)
@@ -132,10 +142,14 @@ def sliced(nav,label):
     return nav.loc[nav.index>=period_start(nav.index,label)].dropna(how="all")
 
 def cagr(s):
-    s=s.dropna(); yrs=(s.index[-1]-s.index[0]).days/365.25
+    s=s.dropna()
+    if len(s)<2 or s.iloc[0]<=0 or s.iloc[-1]<=0: return np.nan
+    yrs=(s.index[-1]-s.index[0]).days/365.25
     return (s.iloc[-1]/s.iloc[0])**(1/yrs)-1 if yrs>0 else np.nan
 
 def max_dd(s):
+    s=s.dropna()
+    if s.empty or s.iloc[0]<=0: return np.nan
     w=s/s.iloc[0]; return (w/w.cummax()-1).min()
 
 def history_years(s):
@@ -223,7 +237,14 @@ if short_history:
 if nav.empty:
     st.error("None of the selected funds currently meets the minimum five-year NAV-history rule."); st.stop()
 
-pnav=sliced(nav,horizon); m=metrics(pnav).sort_values("CAGR",ascending=False); primary=primary if primary in nav else nav.columns[0]
+pnav=sliced(nav,horizon)
+period_unavailable=[n for n in pnav if pnav[n].dropna().shape[0]<2]
+if period_unavailable:
+    st.warning(f"No usable {horizon} observations; excluded from this horizon: "+", ".join(period_unavailable))
+    pnav=pnav.drop(columns=period_unavailable)
+if pnav.empty:
+    st.error(f"No selected fund has sufficient observations for the {horizon} analysis."); st.stop()
+m=metrics(pnav).sort_values("CAGR",ascending=False); primary=primary if primary in nav else nav.columns[0]
 best=m.index[0]; rank=int(m.index.get_loc(primary)+1) if primary in m.index else 0
 c1,c2,c3,c4,c5=st.columns(5)
 with c1:kpi("Period leader",best)
@@ -248,7 +269,8 @@ with tabs[1]:
     horizons={"1Y":1,"3Y":3,"5Y":5}
     tr={}
     for n in nav:
-        tr[n]={k:cagr(nav[n].loc[nav.index>=nav.index.max()-pd.DateOffset(years=y)]) for k,y in horizons.items()}
+        fund_nav=nav[n].dropna()
+        tr[n]={k:cagr(fund_nav.loc[fund_nav.index>=fund_nav.index.max()-pd.DateOffset(years=y)]) for k,y in horizons.items()}
     trailing=pd.DataFrame(tr).T
     st.dataframe(trailing.style.format("{:.2%}"),use_container_width=True)
     yr=nav.resample("YE").last().pct_change(); yr.index=yr.index.year
