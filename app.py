@@ -49,7 +49,7 @@ FUND_UNIVERSE = {
     "ICICI Pru Large Cap": {"category": "Large Cap", "aliases": ["ICICI Prudential Large Cap Fund - Direct Plan Growth", "ICICI Prudential Bluechip Fund - Direct Plan - Growth"]},
     "HDFC Large Cap": {"category": "Large Cap", "aliases": ["HDFC Large Cap Fund - Direct Plan - Growth Option", "HDFC Top 100 Fund -Direct Plan - Growth Option"]},
     "Canara Robeco Large Cap": {"category": "Large Cap", "aliases": ["Canara Robeco Large Cap Fund - Direct Plan - Growth Option", "Canara Robeco Bluechip Equity Fund - Direct Plan - Growth Option"]},
-    "Baroda BNP Paribas Large Cap": {"category": "Large Cap", "aliases": ["Baroda BNP Paribas Large Cap Fund - Direct Plan - Growth Option"]},
+    "Baroda BNP Paribas Large Cap": {"category": "Large Cap", "aliases": ["BARODA BNP PARIBAS LARGE CAP Fund - Direct Plan - Growth Option", "Baroda Large cap Fund - Plan B (Direct) - Growth Option"]},
     # Flexi Cap
     "Parag Parikh Flexi Cap": {"category": "Flexi Cap", "aliases": ["Parag Parikh Flexi Cap Fund - Direct Plan - Growth", "Parag Parikh Flexi Cap Fund-Direct-Growth"]},
     "HDFC Flexi Cap": {"category": "Flexi Cap", "aliases": ["HDFC Flexi Cap Fund - Direct Plan - Growth Option"]},
@@ -60,11 +60,11 @@ FUND_UNIVERSE = {
     "Motilal Oswal Large & Midcap": {"category": "Large & Mid Cap", "aliases": ["Motilal Oswal Large and Midcap Fund-Direct Plan-Growth Option"]},
     "ICICI Pru Large & Mid Cap": {"category": "Large & Mid Cap", "aliases": ["ICICI Prudential Large & Mid Cap Fund - Direct Plan Growth"]},
     "HDFC Large & Mid Cap": {"category": "Large & Mid Cap", "aliases": ["HDFC Large and Mid Cap Fund - Direct Plan - Growth Option"]},
-    "Bandhan Core Equity": {"category": "Large & Mid Cap", "aliases": ["Bandhan Core Equity Fund-Direct Plan-Growth", "IDFC Core Equity Fund - Direct Plan - Growth"]},
+    "Bandhan Large & Mid Cap": {"category": "Large & Mid Cap", "aliases": ["Bandhan Large & Mid Cap Fund - Direct Plan - Growth", "Bandhan Core Equity Fund-Direct Plan-Growth", "IDFC Core Equity Fund - Direct Plan - Growth"]},
     "Edelweiss Large & Mid Cap": {"category": "Large & Mid Cap", "aliases": ["Edelweiss Large & Mid Cap Fund - Direct Plan - Growth Option"]},
     # Mid Cap
     "Motilal Oswal Midcap": {"category": "Mid Cap", "aliases": ["Motilal Oswal Midcap Fund-Direct Plan-Growth Option"]},
-    "HDFC Mid-Cap Opportunities": {"category": "Mid Cap", "aliases": ["HDFC Mid-Cap Opportunities Fund - Direct Plan - Growth Option"]},
+    "HDFC Mid Cap": {"category": "Mid Cap", "aliases": ["HDFC Mid Cap Fund - Growth Option - Direct Plan", "HDFC Mid-Cap Opportunities Fund - Direct Plan - Growth Option"]},
     "Nippon India Growth Mid Cap": {"category": "Mid Cap", "aliases": ["Nippon India Growth Fund - Direct Plan Growth Plan", "Nippon India Growth Fund - Direct Plan - Growth Plan"]},
     "Kotak Midcap": {"category": "Mid Cap", "aliases": ["Kotak Midcap Fund - Direct Plan - Growth", "Kotak Emerging Equity Scheme - Direct Plan - Growth"]},
     "Invesco India Mid Cap": {"category": "Mid Cap", "aliases": ["Invesco India Mid Cap Fund - Direct Plan - Growth"]},
@@ -73,7 +73,7 @@ FUND_UNIVERSE = {
     "Bandhan Small Cap": {"category": "Small Cap", "aliases": ["Bandhan Small Cap Fund-Direct Plan-Growth"]},
     "SBI Small Cap": {"category": "Small Cap", "aliases": ["SBI Small Cap Fund - DIRECT PLAN - Growth"]},
     "HDFC Small Cap": {"category": "Small Cap", "aliases": ["HDFC Small Cap Fund - Direct Plan - Growth Option"]},
-    "Franklin India Smaller Companies": {"category": "Small Cap", "aliases": ["Franklin India Smaller Companies Fund-Direct-Growth"]},
+    "Franklin India Small Cap": {"category": "Small Cap", "aliases": ["Franklin India Small Cap Fund - Direct - Growth", "Franklin India Smaller Companies Fund-Direct-Growth"]},
 }
 TARGETS = {name: meta["aliases"] for name, meta in FUND_UNIVERSE.items()}
 CATEGORIES = ["Large Cap", "Flexi Cap", "Large & Mid Cap", "Mid Cap", "Small Cap"]
@@ -124,9 +124,10 @@ def load_all(selected):
                     if len(candidate)>50: candidates.append(candidate)
                 except Exception:
                     continue
-            # Renamed schemes can have more than one matching code. Retain the
-            # code with the longest history instead of an arbitrary catalogue hit.
-            s=max(candidates,key=len) if candidates else pd.Series(dtype=float)
+            # Renamed or merged schemes can have continuation NAV histories under
+            # multiple codes. Stitch the non-overlapping records into one series.
+            s=(pd.concat(candidates).sort_index().groupby(level=0).last()
+               if candidates else pd.Series(dtype=float))
             if len(s)>50: series[name]=s
             else: errors.append(name)
         except Exception: errors.append(name)
